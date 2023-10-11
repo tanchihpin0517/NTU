@@ -11,7 +11,13 @@ data
 ├── artist20
 └── artist20_testing_data
 ```
-and run `prepare_training_data.sh` and `prepare_testing_data.sh` (note: `prepare_training_data.sh` is required even you just want to do prediction)
+Use modified `split_artist20.py` to generate training and validation song set in the format of tsv file:
+```
+python -m hw1.split_artist20
+```
+and run `prepare_training_data.sh` and `prepare_testing_data.sh`
+
+(note: `prepare_training_data.sh` is required even you just want to do prediction)
 
 ## Training
 ```
