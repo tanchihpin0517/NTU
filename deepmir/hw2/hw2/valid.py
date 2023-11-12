@@ -29,6 +29,15 @@ def prepare(input_dir, output_dir, gl_dir):
         gl = griffin_lim(audio)
         save_audio(gl_file, gl, sr)
 
+    for file in tqdm(wav_files, desc="griffin-lim"):
+        gl_file = gl_dir / file.relative_to(input_dir).with_suffix('.wav')
+        if gl_file.exists():
+            continue
+        gl_file.parent.mkdir(parents=True, exist_ok=True)
+        audio, sr = load_audio(str(file))
+        gl = griffin_lim(audio)
+        save_audio(gl_file, gl, sr)
+
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--prepare', action='store_true')
