@@ -4,16 +4,31 @@ import math
 import numpy as np
 import itertools
 import multiprocessing as mp
+from tqdm import tqdm
+import json
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from .repr import Tokenizer
 
+def norm(v, eps=0.0):
+    v = [(x + eps) for x in v]
+    v = [x / sum(v) for x in v]
+    return v
+
+
 def analyze(ca):
-    files = sorted(ca.data_dir.glob('**/*events.txt'))
+    files = sorted(ca.output_dir.glob('**/*events.txt'))
     tokenizer = Tokenizer(ca.vocab_file)
     args = zip(files, itertools.repeat(tokenizer, len(files)))
+
+    result_file = ca.result_dir / f'{ca.output_dir.name}.json'
     with mp.Pool() as pool:
-        for result in pool.imap(analyze_song, args):
-            pass
+        results = []
+        for result in tqdm(pool.imap(analyze_song, args), total=len(files), desc=result_file.stem):
+            results.append(result)
+        json.dump(results, result_file.open('w'), indent=2)
 
 def analyze_song(args):
     file, tokenizer = args
@@ -29,7 +44,7 @@ def analyze_song(args):
     return {
         'H': h,
         'GS': gs,
-        'D': event_hist,
+        'ED': event_hist,
     }
 
 def H(events, ngram=4):
@@ -44,8 +59,9 @@ def H(events, ngram=4):
                     pitch = int(e.split('_')[1])
                     pc = pitch % 12
                     pc_hist[pc] += 1
-        pc_hist = [x + 1e-6 for x in pc_hist]
-        prob = [x / sum(pc_hist) for x in pc_hist]
+        # pc_hist = [x + 1e-6 for x in pc_hist]
+        # prob = [x / sum(pc_hist) for x in pc_hist]
+        prob = norm(pc_hist, 1e-6)
         entropy = -sum([p * math.log(p, 2) for p in prob])
         out.append(entropy)
     out = np.mean(out)
@@ -86,11 +102,67 @@ def events_to_bars(events):
         bars.append(bar)
     return bars
 
+def statistic(ca):
+    stats = []
+    gt = {}
+    for file in sorted(ca.result_dir.glob('**/*.json')):
+        song_stats = json.load(file.open())
+        tag = file.stem if "dataset" in file.stem else f'{file.parent.stem}_{file.stem}'
+        h = []
+        gs = []
+        ed = [0] * 373
+        for ss in song_stats:
+            h.append(ss['H'])
+            gs.append(ss['GS'])
+            for i, x in enumerate(ss['ED']):
+                ed[i] += x
+        h = np.mean(h)
+        gs = np.mean(gs)
+        ed = norm(ed, 1e-6)
+        stat = {
+            'tag': tag,
+            'H': h,
+            'GS': gs,
+            'ED': ed,
+        }
+        stats.append(stat)
+        if "dataset" in tag:
+            gt = stat
+
+    summary_file = ca.result_dir / 'summary.csv'
+    out = ["tag,H,GS,ED"]
+    for stat in stats:
+        ed_ce = cross_entropy(gt['ED'], stat['ED'])
+        # print(f"{stat['tag']}: H={stat['H']:.4f}, GS={stat['GS']:.4f}, ED={ed_ce:.4f}")
+        out.append(f"{stat['tag']},{stat['H']:.4f},{stat['GS']:.4f},{ed_ce:.4f}")
+    summary_file.write_text('\n'.join(out))
+
+def cross_entropy(p, q):
+    eps = 1e-6
+    p = norm(p, eps)
+    q = norm(q, eps)
+    return -sum([p[i] * math.log(q[i], 2) for i in range(len(p))])
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=Path, required=True)
-    parser.add_argument('--result_dir', type=Path, required=True)
-    parser.add_argument('--vocab_file', type=Path, required=True)
+    subparsers = parser.add_subparsers(dest="command")
+
+    cmd_analyze = subparsers.add_parser('analyze')
+    cmd_analyze.add_argument('--output_dir', type=Path, required=True)
+    cmd_analyze.add_argument('--result_dir', type=Path, required=True)
+    cmd_analyze.add_argument('--vocab_file', type=Path, required=True)
+
+    cmd_stats = subparsers.add_parser('stats')
+    cmd_stats.add_argument('--result_dir', type=Path, required=True)
+
     ca = parser.parse_args()
-    analyze(ca)
+
+    if ca.command is None:
+        parser.print_help()
+        exit()
+    elif ca.command == 'analyze':
+        analyze(ca)
+    elif ca.command == 'stats':
+        statistic(ca)
+    else:
+        raise NotImplementedError()
