@@ -393,8 +393,6 @@ def midi_to_song(midi_obj, beat_per_bar, beat_div):
 
     # collect
     song = {
-        'tokens': [],
-        'ids': [],
         'data': {
             'notes': intsr_gird,
             'chords': chord_grid,

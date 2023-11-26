@@ -185,21 +185,53 @@ class AILabs1k7Dataset(Dataset):
             'label_ids': label_segs,
         }
 
+def statistic(ca):
+    tokenizer = Tokenizer(ca.vocab_file, beat_div = 4, ticks_per_beat = 480)
+    dataset = AILabs1k7Dataset(ca.data_dir, tokenizer=tokenizer)
+    bar_32_lens, bar_64_lens = [], []
+    for song in dataset:
+        bar_count = 0
+        event_count = 0
+        bar_32_len, bar_64_len = -1, -1
+        for event in song['events']:
+            if event.startswith('bar'):
+                bar_count += 1
+            event_count += 1
+            if bar_count == 32 + 1:
+                bar_32_len = event_count
+            if bar_count == 64 + 1:
+                bar_64_len = event_count
+        # print(bar_count, bar_32_len, bar_64_len)
+        if bar_32_len != -1:
+            bar_32_lens.append(bar_32_len)
+        if bar_64_len != -1:
+            bar_64_lens.append(bar_64_len)
+
+    print('bar_32_lens:', np.mean(bar_32_lens), np.std(bar_32_lens))
+    print('bar_64_lens:', np.mean(bar_64_lens), np.std(bar_64_lens))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
     cmd_cache = subparsers.add_parser('gen_cache')
     cmd_cache.add_argument('--data_dir', type=Path, required=True)
     cmd_cache.add_argument('--vocab_file', type=Path, required=True)
-    args = parser.parse_args()
+    cmd_stats = subparsers.add_parser('stats')
+    cmd_stats.add_argument('--data_dir', type=Path, required=True)
+    cmd_stats.add_argument('--vocab_file', type=Path, required=True)
+    ca = parser.parse_args()
 
-    if args.command is None:
+    if ca.command is None:
         parser.print_help()
         exit()
-    elif args.command == 'gen_cache':
+    elif ca.command == 'gen_cache':
         dataset = AILabs1k7Dataset(
-            args.data_dir,
-            tokenizer=Tokenizer(args.vocab_file, beat_div = 4, ticks_per_beat = 480),
+            ca.data_dir,
+            tokenizer=Tokenizer(ca.vocab_file, beat_div = 4, ticks_per_beat = 480),
             use_cache=False,
         )
+    elif ca.command == 'stats':
+        statistic(ca)
+    else:
+        raise ValueError(f'command {ca.command} not recognized')
 
