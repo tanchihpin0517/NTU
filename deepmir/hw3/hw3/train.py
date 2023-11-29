@@ -75,7 +75,7 @@ def train(ca, hp):
         print("Epoch: {}".format(epoch+1))
 
         pbar = tqdm(desc=f'Epoch {epoch+1}', total=len(trainset), dynamic_ncols=True)
-        for i, batch in enumerate(train_loader):
+        for _, batch in enumerate(train_loader):
             song_ids = batch['song_ids'].to(device)
             label_ids = batch['label_ids'].to(device)
             out = model(
@@ -108,41 +108,20 @@ def train(ca, hp):
             if steps % ca.validation_interval == 0:  # and steps != 0:
                 model.eval()
                 torch.cuda.empty_cache()
-                # val_err_tot = 0
-                # with torch.no_grad():
-                #     for j, batch in enumerate(validation_loader):
-                #         x, y, _, y_mel = batch
-                #         y_g_hat = generator(x.to(device))
-                #         y_mel = torch.autograd.Variable(y_mel.to(device, non_blocking=True))
-                #         y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate,
-                #                                       h.hop_size, h.win_size,
-                #                                       h.fmin, h.fmax_for_loss)
-                #         val_err_tot += F.l1_loss(y_mel, y_g_hat_mel).item()
-                #
-                #         if j <= 4:
-                #             if steps == 0:
-                #                 sw.add_audio('gt/y_{}'.format(j), y[0], steps, h.sampling_rate)
-                #                 sw.add_figure('gt/y_spec_{}'.format(j), plot_spectrogram(x[0]), steps)
-                #
-                #             sw.add_audio('generated/y_hat_{}'.format(j), y_g_hat[0], steps, h.sampling_rate)
-                #             y_hat_spec = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels,
-                #                                          h.sampling_rate, h.hop_size, h.win_size,
-                #                                          h.fmin, h.fmax)
-                #             sw.add_figure('generated/y_hat_spec_{}'.format(j),
-                #                           plot_spectrogram(y_hat_spec.squeeze(0).cpu().numpy()), steps)
-                #
-                #     val_err = val_err_tot / (j+1)
-                #     sw.add_scalar("validation/mel_spec_error", val_err, steps)
-
                 model.train()
 
             steps += 1
             pbar.update(song_ids.shape[0])
+
+            if steps > ca.training_steps:
+                break
         pbar.close()
+
+        if steps > ca.training_steps:
+            break
 
         scheduler.step()
         print('Time taken for epoch {} is {} sec\n'.format(epoch + 1, int(time.time() - start)))
-
 
 def main():
     print('Initializing Training Process..')
@@ -153,6 +132,7 @@ def main():
     parser.add_argument('--data_dir', type=Path, required=True)
     parser.add_argument('--vocab_file', type=Path, required=True)
     parser.add_argument('--training_epochs', default=1000, type=int)
+    parser.add_argument('--training_steps', default=300000, type=int)
     parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--checkpoint_interval', default=1000, type=int)
     parser.add_argument('--stdout_interval', default=1, type=int)

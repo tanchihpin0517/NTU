@@ -9,6 +9,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from copy import deepcopy
 
 from .repr import Tokenizer
 
@@ -44,7 +45,7 @@ def analyze_song(args):
     return {
         'H': h,
         'GS': gs,
-        'ED': event_hist,
+        'EH': event_hist,
     }
 
 def H(events, ngram=4):
@@ -106,6 +107,8 @@ def statistic(ca):
     stats = []
     gt = {}
     for file in sorted(ca.result_dir.glob('**/*.json')):
+        if len(ca.filter) > 0 and "dataset" not in str(file) and not any([f in str(file) for f in ca.filter]):
+            continue
         song_stats = json.load(file.open())
         tag = file.stem if "dataset" in file.stem else f'{file.parent.stem}_{file.stem}'
         h = []
@@ -114,11 +117,11 @@ def statistic(ca):
         for ss in song_stats:
             h.append(ss['H'])
             gs.append(ss['GS'])
-            for i, x in enumerate(ss['ED']):
+            for i, x in enumerate(ss['EH']):
                 ed[i] += x
         h = np.mean(h)
         gs = np.mean(gs)
-        ed = norm(ed, 1e-6)
+        ed = norm(ed)
         stat = {
             'tag': tag,
             'H': h,
@@ -129,12 +132,22 @@ def statistic(ca):
         if "dataset" in tag:
             gt = stat
 
-    summary_file = ca.result_dir / 'summary.csv'
+    gt = deepcopy(gt)
+    for stat in stats:
+        ed_l2 = l2_dist(gt['ED'], stat['ED']) * 1e6
+        stat['ED'] = ed_l2
+
+    if ca.order is not None:
+        print(f"sort by {ca.order}")
+        stats = sorted(stats, key=lambda x: x[ca.order], reverse=True)
+
+    summary_file = ca.result_dir / f'summary_{"_".join(ca.filter)}.csv'
     out = ["tag,H,GS,ED"]
     for stat in stats:
-        ed_ce = cross_entropy(gt['ED'], stat['ED'])
+        # ed_ce = cross_entropy(gt['ED'], stat['ED'])
+        # ed_l2 = l2_dist(gt['ED'], stat['ED']) * 1e6
         # print(f"{stat['tag']}: H={stat['H']:.4f}, GS={stat['GS']:.4f}, ED={ed_ce:.4f}")
-        out.append(f"{stat['tag']},{stat['H']:.4f},{stat['GS']:.4f},{ed_ce:.4f}")
+        out.append(f"{stat['tag']},{stat['H']:.4f},{stat['GS']:.4f},{stat['ED']:.4f}")
     summary_file.write_text('\n'.join(out))
 
 def cross_entropy(p, q):
@@ -142,6 +155,12 @@ def cross_entropy(p, q):
     p = norm(p, eps)
     q = norm(q, eps)
     return -sum([p[i] * math.log(q[i], 2) for i in range(len(p))])
+
+def l1_dist(p, q):
+    return sum([abs(p[i] - q[i]) for i in range(len(p))]) / len(p)
+
+def l2_dist(p, q):
+    return sum([(p[i] - q[i]) ** 2 for i in range(len(p))]) / len(p)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -154,15 +173,18 @@ if __name__ == '__main__':
 
     cmd_stats = subparsers.add_parser('stats')
     cmd_stats.add_argument('--result_dir', type=Path, required=True)
+    cmd_stats.add_argument('--order', type=str)
+    cmd_stats.add_argument('--filter', nargs='+')
 
     ca = parser.parse_args()
-
     if ca.command is None:
         parser.print_help()
         exit()
     elif ca.command == 'analyze':
         analyze(ca)
     elif ca.command == 'stats':
+        if ca.filter is None:
+            ca.filter = []
         statistic(ca)
     else:
         raise NotImplementedError()
